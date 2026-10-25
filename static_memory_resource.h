@@ -231,10 +231,7 @@ namespace Yc
                 typename std::pointer_traits<resource_void_pointer>::template rebind<const void>;
             using size_type = std::size_t;
             using difference_type = std::ptrdiff_t;
-            using propagate_on_container_copy_assignment = std::false_type;
-            using propagate_on_container_move_assignment = std::false_type;
-            using propagate_on_container_swap = std::false_type;
-            using is_always_equal = std::bool_constant<is_empty_resource>;
+            using propagate_on_container_move_assignment = std::true_type;
 
             constexpr static_allocator_impl() noexcept
                 requires is_empty_resource

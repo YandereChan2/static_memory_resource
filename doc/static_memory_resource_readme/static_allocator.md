@@ -45,12 +45,14 @@ using pointer =
 |`const_void_pointer`|`typename std::pointer_traits<typename memory_resource_traits<Res>::void_pointer>::template rebind<const void>`|
 |`size_type`|`std::size_t`|
 |`difference_type`|`std::ptrdiff_t`|
-|`propagate_on_container_copy_assignment`|`std::false_type`|
-|`propagate_on_container_move_assignment`|`std::false_type`|
-|`propagate_on_container_swap`|`std::false_type`|
-|`is_always_equal`|当分配器为空类时为 `std::true_type`，否则为 `std::false_type`|
+|`propagate_on_container_move_assignment`|`std::true_type`|
 
-`is_always_equal` 的值等于“分配器是空类”。空类条件为：
+`static_allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`。这些成员由 `std::allocator_traits` 提供默认值：
+
+- `propagate_on_container_copy_assignment` 与 `propagate_on_container_swap` 默认为 `std::false_type`；
+- `is_always_equal` 根据分配器是否为空类推导。
+
+分配器为空类的条件仍然是：
 
 ```C++
 Ptr 非空 || memory_resource_traits<Res>::is_always_equal::value
@@ -156,7 +158,7 @@ using allocator_type =
     Yc::static_allocator<int, Yc::static_new_delete_resource>;
 
 static_assert(std::is_empty_v<allocator_type>);
-static_assert(allocator_type::is_always_equal::value);
+static_assert(std::allocator_traits<allocator_type>::is_always_equal::value);
 
 allocator_type alloc;
 int* p = alloc.allocate(1);
@@ -210,6 +212,7 @@ values.push_back(2);
 - `static_allocator` 满足标准分配器的基本要求，包括复制和相等比较，可与 `std::allocator_traits` 配合。
 - `static_allocator` 不提供嵌套 `rebind`。需要从 `T` 重绑定到 `U` 时，使用 `std::allocator_traits<static_allocator<T, Res, Ptr>>::rebind_alloc<U>`；重绑定由 `allocator_traits` 完成，并保留资源类型和编译期资源指针。
 - 分配器只管理原始内存，不负责构造或析构 `T` 对象；这些操作由 `std::allocator_traits` 或调用者完成。
-- `propagate_on_container_copy_assignment`、`propagate_on_container_move_assignment` 与 `propagate_on_container_swap` 均为 `std::false_type`。
+- `propagate_on_container_move_assignment` 为 `std::true_type`；容器移动赋值时可以传播该分配器。
+- `static_allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`；`std::allocator_traits` 为前两者提供 `std::false_type`，并根据空类性质推导 `is_always_equal`。
 - 非空分配器的 `get_resource_pointer` 返回保存的指针；空类分配器没有该接口。
 - 资源必须在所有使用该分配器的对象之前保持有效。
