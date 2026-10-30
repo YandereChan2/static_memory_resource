@@ -474,25 +474,22 @@ namespace Yc
 
         static_monotonic_buffer_resource()
             requires (has_static_buffer && static_upstream)
-            : current_(make_byte_pointer(static_buffer_begin())),
-              end_(make_byte_pointer(static_buffer_end()))
         {
+            set_static_buffer();
         }
 
         explicit static_monotonic_buffer_resource(upstream_pointer upstream_resource)
             requires (has_static_buffer && !static_upstream)
-            : upstream_storage(upstream_resource),
-              current_(make_byte_pointer(static_buffer_begin())),
-              end_(make_byte_pointer(static_buffer_end()))
+            : upstream_storage(upstream_resource)
         {
+            set_static_buffer();
         }
 
         explicit static_monotonic_buffer_resource(Upstream& upstream_resource)
             requires (has_static_buffer && !static_upstream)
-            : upstream_storage(make_upstream_pointer(upstream_resource)),
-              current_(make_byte_pointer(static_buffer_begin())),
-              end_(make_byte_pointer(static_buffer_end()))
+            : upstream_storage(make_upstream_pointer(upstream_resource))
         {
+            set_static_buffer();
         }
 
         static_monotonic_buffer_resource(void_pointer initial_buffer, size_type length)
@@ -561,6 +558,32 @@ namespace Yc
         {
         }
 
+        void release() noexcept
+        {
+            release_blocks();
+            current_ = initial_begin_;
+            end_ = initial_end_;
+        }
+
+        [[nodiscard]] upstream_resource_pointer upstream_resource() const noexcept
+        {
+            if constexpr (static_upstream)
+            {
+                if constexpr (details::is_nonnull_pointer<decltype(UpstreamPtr), UpstreamPtr>())
+                {
+                    return static_cast<upstream_resource_pointer>(UpstreamPtr);
+                }
+                else
+                {
+                    return make_upstream_pointer(this->resource());
+                }
+            }
+            else
+            {
+                return static_cast<const upstream_storage&>(*this).get_pointer();
+            }
+        }
+
         bool operator==(const static_monotonic_buffer_resource& other) const noexcept
         {
             return this == &other;
@@ -569,7 +592,17 @@ namespace Yc
     private:
         byte_pointer current_{};
         byte_pointer end_{};
+        byte_pointer initial_begin_{};
+        byte_pointer initial_end_{};
         block_pointer blocks_{};
+
+        void set_static_buffer() noexcept
+        {
+            current_ = make_byte_pointer(static_buffer_begin());
+            end_ = make_byte_pointer(static_buffer_end());
+            initial_begin_ = current_;
+            initial_end_ = end_;
+        }
 
         static std::byte* static_buffer_begin() noexcept
         {
@@ -658,12 +691,16 @@ namespace Yc
             {
                 current_ = byte_pointer{};
                 end_ = byte_pointer{};
+                initial_begin_ = byte_pointer{};
+                initial_end_ = byte_pointer{};
                 return;
             }
 
             auto* bytes = static_cast<std::byte*>(raw);
-            current_ = make_byte_pointer(bytes);
-            end_ = make_byte_pointer(bytes + length);
+            initial_begin_ = make_byte_pointer(bytes);
+            initial_end_ = make_byte_pointer(bytes + length);
+            current_ = initial_begin_;
+            end_ = initial_end_;
         }
 
         std::byte* allocate_block(size_type bytes, size_type alignment)

@@ -37,7 +37,7 @@ class static_monotonic_buffer_resource;
 
 - 资源的 `is_always_equal::value` 为真（默认对应无状态/空类资源），或指向资源的指针可以在模板实参中给出时，`static_allocator` 是空类，并且可以直接默认构造。
 - 资源无法静态确定时，`static_allocator` 保存一个资源指针，并通过构造函数传入该指针。
-- `static_monotonic_buffer_resource` 先使用一块初始缓冲区；缓冲区耗尽后向上游资源申请新块，并在自身析构时归还这些块。
+- `static_monotonic_buffer_resource` 先使用一块初始缓冲区；缓冲区耗尽后向上游资源申请新块，并在自身析构时归还这些块。也可以调用 `release()` 提前归还所有上游块，并把分配位置重置到初始缓冲区开头。
 
 所有设施均位于命名空间 `Yc` 中，不向 `std` 添加任何声明。
 

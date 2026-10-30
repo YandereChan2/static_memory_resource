@@ -11,7 +11,7 @@ template<
 class static_monotonic_buffer_resource;
 ```
 
-`Yc::static_monotonic_buffer_resource` 是一个单调内存资源：它从一块初始缓冲区中按递增地址分配内存；当剩余空间不足时，向上游资源申请新块。对单独一块内存的 `deallocate` 不执行任何操作，所有从上游申请的块会在资源析构时统一归还。
+`Yc::static_monotonic_buffer_resource` 是一个单调内存资源：它从一块初始缓冲区中按递增地址分配内存；当剩余空间不足时，向上游资源申请新块。对单独一块内存的 `deallocate` 不执行任何操作。所有从上游申请的块会在资源析构时统一归还，也可以调用 [`release()`](#release) 提前归还并重新使用初始缓冲区。
 
 初始缓冲区有两种来源：
 
@@ -121,13 +121,13 @@ memory_resource_traits<Upstream>::is_always_equal::value
 
 资源不可复制、不可移动。复制或移动它会破坏“所有上游块只被归还一次”的约束。
 
-析构函数会通过上游资源归还所有由它申请的新块。它不会：
+析构函数会通过上游资源归还所有由它申请的新块。也可以调用 `release()` 提前完成这次归还，并把分配位置重置到初始缓冲区开头。析构函数和 `release()` 都不会：
 
 - 释放静态缓冲区；
 - 释放构造函数传入的动态缓冲区；
 - 销毁上游资源对象。
 
-动态缓冲区的生命周期必须覆盖整个资源；上游资源也一样。否则资源析构时访问它们的行为未定义。
+动态缓冲区的生命周期必须覆盖整个资源；上游资源也一样。否则资源析构或调用 `release()` 时访问它们的行为未定义。
 
 ## 成员函数
 
@@ -135,6 +135,8 @@ memory_resource_traits<Upstream>::is_always_equal::value
 |:-|:-|
 |`allocate`|从初始缓冲区或上游资源分配原始内存 <br>（公开成员函数）|
 |`deallocate`|不执行任何操作 <br>（公开成员函数）|
+|`release`|归还所有上游块，并重置分配位置到初始缓冲区开头 <br>（公开成员函数）|
+|`upstream_resource`|返回上游资源指针 <br>（公开成员函数）|
 |`operator==`|比较两个资源的对象身份 <br>（公开成员函数）|
 
 ### allocate
@@ -153,7 +155,7 @@ memory_resource_traits<Upstream>::is_always_equal::value
 
 `alignment` 是 2 的幂；传入 `0` 时按 `1` 处理。
 
-返回的指针在资源析构之前一直有效，且不会被单独回收。资源不限制分配次数，除非上游资源耗尽或抛出异常。
+返回的指针在资源析构或调用 `release()` 之前一直有效，且不会被单独回收。资源不限制分配次数，除非上游资源耗尽或抛出异常。
 
 ### deallocate
 
@@ -164,7 +166,43 @@ void deallocate(
     size_type alignment = alignof(std::max_align_t)) noexcept;
 ```
 
-单调资源不执行单次释放；该函数什么也不做。所有从上游申请的内存只在资源析构时统一归还；初始缓冲区不由资源释放。
+单调资源不执行单次释放；该函数什么也不做。所有从上游申请的内存只在资源析构或调用 `release()` 时统一归还；初始缓冲区不由资源释放。
+
+### release
+
+```C++
+void release() noexcept;
+```
+
+归还所有由本资源从上游申请的块，并把分配位置重置到初始缓冲区的开头。因此：
+
+- 静态缓冲区和动态缓冲区都可以在 `release()` 之后从开头重新使用；
+- 如果没有初始缓冲区，`release()` 之后的所有分配仍然直接转向上游；
+- 初始缓冲区本身不会被释放，上游资源对象也不会被销毁；
+- `release()` 可以重复调用；没有上游块时只重置分配位置。
+
+调用 `release()` 会使此前通过 `allocate()` 获得的全部指针失效。调用者必须先结束这些内存中对象的生命周期（以及不再访问这些指针），再调用 `release()`。初始缓冲区的内容不会被清除，后续分配会从缓冲区开头重新覆盖。
+
+### upstream_resource
+
+```C++
+[[nodiscard]] upstream_resource_pointer upstream_resource() const noexcept;
+```
+
+返回本资源使用的上游资源指针。返回类型是公开别名：
+
+```C++
+using upstream_resource_pointer =
+    typename memory_resource_traits<Upstream>::memory_resource_pointer;
+```
+
+具体返回哪个指针，取决于上游的配置方式：
+
+- `UpstreamPtr` 非空时，返回该编译期指针；
+- 上游没有编译期指针、但存在运行时上游时，返回保存的运行时指针；
+- 上游无状态（`is_always_equal::value` 为真）且没有编译期指针时，返回指向默认上游实例的指针。
+
+该函数只观察，不转移所有权。返回的指针在对应上游资源的生命周期内有效。对于普通指针，可以直接与 `&upstream` 比较；对于 fancy pointer，可以用 `std::to_address` 取得底层地址后再比较。
 
 ### operator==
 
@@ -267,6 +305,24 @@ using resource_type = Yc::static_monotonic_buffer_resource<
 resource_type resource{buffer, sizeof(buffer), upstream};
 ```
 
+### 提前释放并复用初始缓冲区
+
+```C++
+#include <cstddef>
+#include "static_memory_resource.h"
+
+alignas(64) std::byte buffer[256]{};
+
+Yc::static_monotonic_buffer_resource<> resource{
+    buffer, sizeof(buffer)};
+
+void* first = resource.allocate(32, 8);
+
+resource.release(); // 归还所有上游块；first 现在失效
+
+void* second = resource.allocate(32, 8); // 再次从 buffer 开头分配
+```
+
 ### 作为静态分配器的资源
 
 沿用上文的 `resource_type`：
@@ -311,8 +367,10 @@ catch (const std::bad_alloc&)
 ## 注解
 
 - 初始缓冲区和上游都属于资源的外部依赖，资源不拥有它们。
-- 单次 `deallocate` 不影响后续分配；从上游申请的内存直到资源析构才归还。
-- 析构时会归还所有从上游申请的块；如果上游释放可能抛出异常，不应该让异常离开析构函数。
+- 单次 `deallocate` 不影响后续分配；从上游申请的内存直到资源析构或调用 `release()` 才归还。
+- `release()` 会归还上游块，并把分配位置重置到初始缓冲区开头；它会使此前分配的所有指针失效。
+- `upstream_resource()` 返回上游资源指针；它不转移所有权，也不影响分配状态。
+- 析构和 `release()` 都会归还所有上游块；如果上游释放可能抛出异常，不应该让异常离开析构函数或 `release()`。
 - 对齐必须是有效的 2 的幂。默认对齐是 `alignof(std::max_align_t)`。
 - 若 `UpstreamPtr` 的类型不能作为非类型模板参数，模板实参位置会退化为只能表示空值的占位类型；此时上游必须通过构造函数传入，除非 `Upstream` 无状态。
 - 资源不提供同步；多线程同时使用同一个资源需要外部同步。
