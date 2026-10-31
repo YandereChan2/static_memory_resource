@@ -248,12 +248,6 @@ namespace Yc::mmr
             {
             }
 
-            constexpr explicit allocator_impl(resource_type& resource) noexcept
-                requires (!is_empty_resource)
-                : storage_type(std::pointer_traits<resource_pointer>::pointer_to(resource))
-            {
-            }
-
             template<class U>
             constexpr allocator_impl(const allocator_impl<U, Config>&) noexcept
                 requires is_empty_resource

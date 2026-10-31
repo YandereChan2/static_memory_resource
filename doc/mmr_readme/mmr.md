@@ -186,7 +186,7 @@ using allocator_pointer =
 | [`monotonic_buffer_resource`](monotonic_buffer_resource.md) | 不适用；它必须保存分配状态 |
 | [`lifo_pool_resource`](lifo_pool_resource.md) | 不适用；它保存分配状态 |
 
-`allocator` 为空类时可以直接默认构造，且所有同类型实例相等；非空时不能默认构造，必须传入资源指针或资源引用。
+`allocator` 为空类时可以直接默认构造，且所有同类型实例相等；非空时不能默认构造，必须传入资源指针。
 
 ## 快速开始
 
@@ -210,11 +210,11 @@ int main()
 }
 ```
 
-有状态资源需要把资源实例传给分配器：
+有状态资源需要把资源指针传给分配器：
 
 ```C++
 MyResource resource;
-Yc::mmr::allocator<int, MyResource> alloc{resource};
+Yc::mmr::allocator<int, MyResource> alloc{&resource};
 ```
 
 如果资源实例具有静态存储期，也可以把地址直接作为模板实参：

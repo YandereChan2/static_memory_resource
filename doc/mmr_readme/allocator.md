@@ -64,12 +64,11 @@ Ptr 非空 || memory_resource_traits<Res>::is_always_equal::value
 |:-|:-|
 |`allocator()`|仅当分配器为空类时参与重载；直接默认构造，不保存指针。|
 |`explicit allocator(typename memory_resource_traits<Res>::memory_resource_pointer p)`|仅当分配器非空时参与重载；保存资源指针 `p`。|
-|`explicit allocator(Res& resource)`|仅当分配器非空时参与重载；保存指向 `resource` 的资源指针。|
 |`allocator(const allocator&)`|复制构造，默认化。空类不复制任何状态；非空类复制资源指针。|
 |`allocator& operator=(const allocator&)`|复制赋值，默认化。|
 |`template<class U> allocator(const allocator<U, Res, Ptr>&)`|从同资源、同编译期指针的 `U` 分配器转换；非空时复制资源指针。|
 
-非空分配器不能默认构造，这是为了避免生成一个没有资源的分配器。需要非空分配器时，必须传入资源引用或资源指针。
+非空分配器不能默认构造，这是为了避免生成一个没有资源的分配器。需要非空分配器时，必须传入资源指针。这一点与 `std::pmr::polymorphic_allocator` 一致。
 
 ## 成员函数
 
@@ -171,7 +170,7 @@ alloc.deallocate(p, 1);
 
 ```C++
 MyResource resource;
-Yc::mmr::allocator<int, MyResource> alloc{resource};
+Yc::mmr::allocator<int, MyResource> alloc{&resource};
 
 int* p = alloc.allocate(8);
 alloc.deallocate(p, 8);

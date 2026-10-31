@@ -331,12 +331,12 @@ void* second = resource.allocate(32, 8); // 再次从 buffer 开头分配
 using allocator_type =
     Yc::mmr::allocator<int, resource_type>;
 
-allocator_type alloc{resource};
+allocator_type alloc{&resource};
 int* p = alloc.allocate(8);
 alloc.deallocate(p, 8);
 ```
 
-单调资源本身不是空类，因此 `allocator_type` 也不是空类，必须传入资源引用或指针。
+单调资源本身不是空类，因此 `allocator_type` 也不是空类，必须传入资源指针。
 
 ### 使用空上游测试耗尽
 
