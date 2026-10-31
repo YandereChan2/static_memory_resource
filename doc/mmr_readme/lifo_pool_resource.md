@@ -1,14 +1,14 @@
-# Yc::static_lifo_pool_resource
+# Yc::mmr::lifo_pool_resource
 
 ```C++
 template<
-    static_memory_resource Upstream = static_new_delete_resource,
-    /* memory-resource-pointer */ UpstreamPtr = nullptr,
-    std::size_t ChunkSize = 4096>
-class static_lifo_pool_resource;
+    std::size_t ChunkSize = 4096,
+    memory_resource Upstream = new_delete_resource,
+    /* memory-resource-pointer */ UpstreamPtr = nullptr>
+class lifo_pool_resource;
 ```
 
-`Yc::static_lifo_pool_resource` 面向近似 LIFO 的分配/释放模式：对象通常成批或嵌套地创建，释放顺序大体与创建顺序相反，但允许少量乱序。
+`Yc::mmr::lifo_pool_resource` 面向近似 LIFO 的分配/释放模式：对象通常成批或嵌套地创建，释放顺序大体与创建顺序相反，但允许少量乱序。
 
 它适合：
 
@@ -26,9 +26,9 @@ class static_lifo_pool_resource;
 
 | 参数 | 默认值 | 说明 |
 |:-|:-|:-|
-| `Upstream` | `static_new_delete_resource` | chunk 和超大对象的来源 |
-| `UpstreamPtr` | `nullptr` | 可选的、指向 `Upstream` 实例的编译期指针；含义见 [占位模板参数](static_memory_resource.md#占位模板参数) |
 | `ChunkSize` | `4096` | 单个 chunk 的字节数；必须是大于等于 256 的 2 的幂。chunk 的对齐也等于 `ChunkSize` |
+| `Upstream` | `new_delete_resource` | chunk 和超大对象的来源 |
+| `UpstreamPtr` | `nullptr` | 可选的、指向 `Upstream` 实例的编译期指针；含义见 [占位模板参数](mmr.md#占位模板参数) |
 
 所有内存都从 `Upstream` 申请，没有静态或动态的初始缓冲区。
 
@@ -45,16 +45,16 @@ class static_lifo_pool_resource;
 | `chunk_alignment` | `ChunkSize` |
 | `default_alignment` | `alignof(std::max_align_t)` |
 
-上游必须能够提供 `ChunkSize` 字节对齐的 `ChunkSize` 字节分配。默认的 `static_new_delete_resource` 会自动使用对齐的 `operator new`。
+上游必须能够提供 `ChunkSize` 字节对齐的 `ChunkSize` 字节分配。默认的 `new_delete_resource` 会自动使用对齐的 `operator new`。
 
 ## 构造与析构
 
 ```C++
-constexpr static_lifo_pool_resource() noexcept
+constexpr lifo_pool_resource() noexcept
     requires /* 上游地址在编译期确定或上游无状态 */;
 
-explicit static_lifo_pool_resource(upstream_resource_pointer upstream);
-explicit static_lifo_pool_resource(Upstream& upstream);
+explicit lifo_pool_resource(upstream_resource_pointer upstream);
+explicit lifo_pool_resource(Upstream& upstream);
 ```
 
 - 上游无状态，或 `UpstreamPtr` 非空时，可以默认构造；
@@ -126,11 +126,11 @@ void deallocate(
 
 ```C++
 #include <cassert>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 int main()
 {
-    Yc::static_lifo_pool_resource<> pool;
+    Yc::mmr::lifo_pool_resource<> pool;
 
     void* a = pool.allocate(64);
     void* b = pool.allocate(32);
@@ -148,14 +148,14 @@ int main()
 
 ```C++
 MyUpstream upstream;
-Yc::static_lifo_pool_resource<MyUpstream> pool{upstream};
+Yc::mmr::lifo_pool_resource<4096, MyUpstream> pool{upstream};
 ```
 
 编译期上游：
 
 ```C++
 inline MyUpstream upstream;
-using pool_type = Yc::static_lifo_pool_resource<MyUpstream, &upstream>;
+using pool_type = Yc::mmr::lifo_pool_resource<4096, MyUpstream, &upstream>;
 pool_type pool; // 默认构造，不需要保存运行时上游指针
 ```
 
@@ -194,14 +194,14 @@ pool_type pool; // 默认构造，不需要保存运行时上游指针
 - 析构函数会归还所有 chunk 和直接大块；没有单独的提前释放接口。
 - 资源不提供线程同步；多个线程同时使用同一个资源需要外部同步。
 - 上游必须支持 `ChunkSize` 字节对齐。
-- 资源是非空类；用 `static_allocator` 适配它时需要保存资源指针，或通过构造函数传入资源引用。
+- 资源是非空类；用 `allocator` 适配它时需要保存资源指针，或通过构造函数传入资源引用。
 - `deallocate` 的指针必须来自同一个资源的 `allocate`，并且大小和对齐应与分配时一致。
 
 ## 相关文档
 
 | 文档 | 内容 |
 |:-|:-|
-| [设施总览](static_memory_resource.md) | traits、概念、指针模型和模板形参 |
-| [`static_allocator`](static_allocator.md) | 标准分配器适配和 fancy pointer |
-| [内置资源](builtin_resources.md) | `static_new_delete_resource` 与 `static_null_memory_resource` |
-| [`static_monotonic_buffer_resource`](static_monotonic_buffer_resource.md) | 单调资源、初始缓冲区和 `release()` |
+| [设施总览](mmr.md) | traits、概念、指针模型和模板形参 |
+| [`allocator`](allocator.md) | 标准分配器适配和 fancy pointer |
+| [内置资源](builtin_resources.md) | `new_delete_resource` 与 `null_memory_resource` |
+| [`monotonic_buffer_resource`](monotonic_buffer_resource.md) | 单调资源、初始缓冲区和 `release()` |

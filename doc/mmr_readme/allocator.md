@@ -1,14 +1,14 @@
-# Yc::static_allocator
+# Yc::mmr::allocator
 
-在文件 `"static_memory_resource.h"` 定义
+在文件 `"mmr.h"` 定义
 
 ```C++
-template<class T, static_memory_resource Res,
+template<class T, memory_resource Res,
     /* memory-resource-pointer */ Ptr = nullptr>
-class static_allocator;
+class allocator;
 ```
 
-`Yc::static_allocator` 是把 `Yc::static_memory_resource` 适配为标准分配器的类模板。其元素类型为 `T`，所有原始内存都通过资源 `Res` 分配和释放。
+`Yc::mmr::allocator` 是把 `Yc::mmr::memory_resource` 适配为标准分配器的类模板。其元素类型为 `T`，所有原始内存都通过资源 `Res` 分配和释放。
 
 分配器的元素指针不是固定为 `T*`，而是从资源的 `void_pointer` 重绑定得到：
 
@@ -20,7 +20,7 @@ using pointer =
 
 因此默认的 `void*` 资源得到普通 `T*`，fancy `void_pointer` 资源得到同族 fancy 指针。
 
-模板参数中的 `/* memory-resource-pointer */` 表示可选的、指向 `Res` 实例的编译期指针。其完整含义见 [占位模板参数](static_memory_resource.md#占位模板参数)。简言之：
+模板参数中的 `/* memory-resource-pointer */` 表示可选的、指向 `Res` 实例的编译期指针。其完整含义见 [占位模板参数](mmr.md#占位模板参数)。简言之：
 
 - 它非空时，分配器不需要保存资源指针，并且是空类；
 - 它为空时，如果资源本身无状态（`is_always_equal::value` 为真），分配器仍为空类；否则分配器保存运行时资源指针，必须通过构造函数传入；
@@ -31,8 +31,8 @@ using pointer =
 | | |
 |-:|:-|
 |`T`|元素类型。分配器为 `T` 分配原始、未构造的内存。|
-|`Res`|内存资源类型，必须满足 [`static_memory_resource`](static_memory_resource.md#static_memory_resource)。|
-|`Ptr`|可选的编译期资源指针，默认 `nullptr`。类型和含义见[占位模板参数](static_memory_resource.md#占位模板参数)。|
+|`Res`|内存资源类型，必须满足 [`memory_resource`](mmr.md#memory_resource)。|
+|`Ptr`|可选的编译期资源指针，默认 `nullptr`。类型和含义见[占位模板参数](mmr.md#占位模板参数)。|
 
 ## 成员类型
 
@@ -47,7 +47,7 @@ using pointer =
 |`difference_type`|`std::ptrdiff_t`|
 |`propagate_on_container_move_assignment`|`std::true_type`|
 
-`static_allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`。这些成员由 `std::allocator_traits` 提供默认值：
+`allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`。这些成员由 `std::allocator_traits` 提供默认值：
 
 - `propagate_on_container_copy_assignment` 与 `propagate_on_container_swap` 默认为 `std::false_type`；
 - `is_always_equal` 根据分配器是否为空类推导。
@@ -62,12 +62,12 @@ Ptr 非空 || memory_resource_traits<Res>::is_always_equal::value
 
 | | |
 |:-|:-|
-|`static_allocator()`|仅当分配器为空类时参与重载；直接默认构造，不保存指针。|
-|`explicit static_allocator(typename memory_resource_traits<Res>::memory_resource_pointer p)`|仅当分配器非空时参与重载；保存资源指针 `p`。|
-|`explicit static_allocator(Res& resource)`|仅当分配器非空时参与重载；保存指向 `resource` 的资源指针。|
-|`static_allocator(const static_allocator&)`|复制构造，默认化。空类不复制任何状态；非空类复制资源指针。|
-|`static_allocator& operator=(const static_allocator&)`|复制赋值，默认化。|
-|`template<class U> static_allocator(const static_allocator<U, Res, Ptr>&)`|从同资源、同编译期指针的 `U` 分配器转换；非空时复制资源指针。|
+|`allocator()`|仅当分配器为空类时参与重载；直接默认构造，不保存指针。|
+|`explicit allocator(typename memory_resource_traits<Res>::memory_resource_pointer p)`|仅当分配器非空时参与重载；保存资源指针 `p`。|
+|`explicit allocator(Res& resource)`|仅当分配器非空时参与重载；保存指向 `resource` 的资源指针。|
+|`allocator(const allocator&)`|复制构造，默认化。空类不复制任何状态；非空类复制资源指针。|
+|`allocator& operator=(const allocator&)`|复制赋值，默认化。|
+|`template<class U> allocator(const allocator<U, Res, Ptr>&)`|从同资源、同编译期指针的 `U` 分配器转换；非空时复制资源指针。|
 
 非空分配器不能默认构造，这是为了避免生成一个没有资源的分配器。需要非空分配器时，必须传入资源引用或资源指针。
 
@@ -122,8 +122,8 @@ void deallocate(pointer p, size_type n) noexcept;
 ## 比较
 
 ```C++
-friend bool operator==(const static_allocator& lhs,
-                       const static_allocator& rhs);
+friend bool operator==(const allocator& lhs,
+                       const allocator& rhs);
 ```
 
 - 空类分配器：恒等，返回 `true`。
@@ -152,10 +152,10 @@ friend bool operator==(const static_allocator& lhs,
 ```C++
 #include <memory>
 #include <type_traits>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 using allocator_type =
-    Yc::static_allocator<int, Yc::static_new_delete_resource>;
+    Yc::mmr::allocator<int, Yc::mmr::new_delete_resource>;
 
 static_assert(std::is_empty_v<allocator_type>);
 static_assert(std::allocator_traits<allocator_type>::is_always_equal::value);
@@ -171,7 +171,7 @@ alloc.deallocate(p, 1);
 
 ```C++
 MyResource resource;
-Yc::static_allocator<int, MyResource> alloc{resource};
+Yc::mmr::allocator<int, MyResource> alloc{resource};
 
 int* p = alloc.allocate(8);
 alloc.deallocate(p, 8);
@@ -185,7 +185,7 @@ alloc.deallocate(p, 8);
 inline MyResource resource;
 
 using allocator_type =
-    Yc::static_allocator<int, MyResource, &resource>;
+    Yc::mmr::allocator<int, MyResource, &resource>;
 
 static_assert(std::is_empty_v<allocator_type>);
 allocator_type alloc;
@@ -198,8 +198,8 @@ allocator_type alloc;
 ```C++
 #include <vector>
 
-std::vector<int, Yc::static_allocator<
-    int, Yc::static_new_delete_resource>> values;
+std::vector<int, Yc::mmr::allocator<
+    int, Yc::mmr::new_delete_resource>> values;
 
 values.push_back(1);
 values.push_back(2);
@@ -209,10 +209,10 @@ values.push_back(2);
 
 ## 注解
 
-- `static_allocator` 满足标准分配器的基本要求，包括复制和相等比较，可与 `std::allocator_traits` 配合。
-- `static_allocator` 不提供嵌套 `rebind`。需要从 `T` 重绑定到 `U` 时，使用 `std::allocator_traits<static_allocator<T, Res, Ptr>>::rebind_alloc<U>`；重绑定由 `allocator_traits` 完成，并保留资源类型和编译期资源指针。
+- `allocator` 满足标准分配器的基本要求，包括复制和相等比较，可与 `std::allocator_traits` 配合。
+- `allocator` 不提供嵌套 `rebind`。需要从 `T` 重绑定到 `U` 时，使用 `std::allocator_traits<allocator<T, Res, Ptr>>::rebind_alloc<U>`；重绑定由 `allocator_traits` 完成，并保留资源类型和编译期资源指针。
 - 分配器只管理原始内存，不负责构造或析构 `T` 对象；这些操作由 `std::allocator_traits` 或调用者完成。
 - `propagate_on_container_move_assignment` 为 `std::true_type`；容器移动赋值时可以传播该分配器。
-- `static_allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`；`std::allocator_traits` 为前两者提供 `std::false_type`，并根据空类性质推导 `is_always_equal`。
+- `allocator` 不声明 `propagate_on_container_copy_assignment`、`propagate_on_container_swap` 和 `is_always_equal`；`std::allocator_traits` 为前两者提供 `std::false_type`，并根据空类性质推导 `is_always_equal`。
 - 非空分配器的 `get_resource_pointer` 返回保存的指针；空类分配器没有该接口。
 - 资源必须在所有使用该分配器的对象之前保持有效。

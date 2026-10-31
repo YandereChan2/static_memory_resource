@@ -1,17 +1,17 @@
-# Yc::static_monotonic_buffer_resource
+# Yc::mmr::monotonic_buffer_resource
 
-在文件 `"static_memory_resource.h"` 定义
+在文件 `"mmr.h"` 定义
 
 ```C++
 template<
     auto Buffer = nullptr,
     std::size_t Length = 0,
-    static_memory_resource Upstream = static_new_delete_resource,
+    memory_resource Upstream = new_delete_resource,
     /* memory-resource-pointer */ UpstreamPtr = nullptr>
-class static_monotonic_buffer_resource;
+class monotonic_buffer_resource;
 ```
 
-`Yc::static_monotonic_buffer_resource` 是一个单调内存资源：它从一块初始缓冲区中按递增地址分配内存；当剩余空间不足时，向上游资源申请新块。对单独一块内存的 `deallocate` 不执行任何操作。所有从上游申请的块会在资源析构时统一归还，也可以调用 [`release()`](#release) 提前归还并重新使用初始缓冲区。
+`Yc::mmr::monotonic_buffer_resource` 是一个单调内存资源：它从一块初始缓冲区中按递增地址分配内存；当剩余空间不足时，向上游资源申请新块。对单独一块内存的 `deallocate` 不执行任何操作。所有从上游申请的块会在资源析构时统一归还，也可以调用 [`release()`](#release) 提前归还并重新使用初始缓冲区。
 
 初始缓冲区有两种来源：
 
@@ -20,7 +20,7 @@ class static_monotonic_buffer_resource;
 
 上游资源由类型 `Upstream` 和可选的编译期指针 `UpstreamPtr` 指定。上游指针同样遵循“能在编译期确定就不保存运行时指针”的原则。
 
-模板参数中的 `/* memory-resource-pointer */` 含义见 [占位模板参数](static_memory_resource.md#占位模板参数)。对于本资源，它指向 `Upstream` 的实例。
+模板参数中的 `/* memory-resource-pointer */` 含义见 [占位模板参数](mmr.md#占位模板参数)。对于本资源，它指向 `Upstream` 的实例。
 
 ## 模板参数
 
@@ -28,8 +28,8 @@ class static_monotonic_buffer_resource;
 |-:|:-|
 |`Buffer`|初始缓冲区的编译期地址，默认 `nullptr`。非空时必须指向具有静态存储期的对象、能作为非类型模板参数，且类型**精确等于** `memory_resource_traits<Upstream>::void_pointer`。为空表示缓冲区由构造函数动态传入。|
 |`Length`|初始缓冲区的字节数。`Buffer` 为空时必须为 `0`；`Buffer` 非空时表示静态缓冲区的大小。|
-|`Upstream`|上游内存资源类型，必须满足 [`static_memory_resource`](static_memory_resource.md#static_memory_resource)。默认 `static_new_delete_resource`。初始缓冲区耗尽后从这里申请内存。|
-|`UpstreamPtr`|可选的、指向 `Upstream` 实例的编译期指针，默认 `nullptr`。类型和含义见[占位模板参数](static_memory_resource.md#占位模板参数)。|
+|`Upstream`|上游内存资源类型，必须满足 [`memory_resource`](mmr.md#memory_resource)。默认 `new_delete_resource`。初始缓冲区耗尽后从这里申请内存。|
+|`UpstreamPtr`|可选的、指向 `Upstream` 实例的编译期指针，默认 `nullptr`。类型和含义见[占位模板参数](mmr.md#占位模板参数)。|
 
 `Length` 的单位是字节，不是元素个数。
 
@@ -44,7 +44,7 @@ static_assert(
         typename memory_resource_traits<Upstream>::void_pointer>);
 ```
 
-要求的是类型完全相同，而不是可转换。默认上游 `static_new_delete_resource` 的 `void_pointer` 是 `void*`，因此默认配置下需要传入一个 `void*` 类型的编译期值：
+要求的是类型完全相同，而不是可转换。默认上游 `new_delete_resource` 的 `void_pointer` 是 `void*`，因此默认配置下需要传入一个 `void*` 类型的编译期值：
 
 ```C++
 alignas(64) inline std::byte buffer[1024];
@@ -66,7 +66,7 @@ inline constexpr void* buffer_address = buffer;
 当 `Buffer` 为空时，初始缓冲区必须通过构造函数传入。缓冲区指针的类型是资源的 `void_pointer`，长度在运行时给出：
 
 ```C++
-Yc::static_monotonic_buffer_resource<> resource{
+Yc::mmr::monotonic_buffer_resource<> resource{
     buffer, buffer_size};
 ```
 
@@ -74,7 +74,7 @@ Yc::static_monotonic_buffer_resource<> resource{
 
 ## 上游资源
 
-上游资源遵循与 `static_allocator` 相同的静态化规则：
+上游资源遵循与 `allocator` 相同的静态化规则：
 
 - `UpstreamPtr` 非空时，上游实例在编译期确定，资源不需要保存运行时指针。
 - `UpstreamPtr` 为空，但 `memory_resource_traits<Upstream>::is_always_equal::value` 为真时，资源仍不需要保存运行时指针；它使用一个默认的上游实例。
@@ -107,10 +107,10 @@ memory_resource_traits<Upstream>::is_always_equal::value
 
 | 初始缓冲区 | 上游 | 构造函数 |
 |:-|:-|:-|
-| 静态 | 静态 | `static_monotonic_buffer_resource()` |
-| 静态 | 运行时 | `explicit static_monotonic_buffer_resource(upstream_resource_pointer)` 或 `explicit static_monotonic_buffer_resource(Upstream&)` |
-| 动态 | 静态 | `static_monotonic_buffer_resource(void_pointer buffer, size_type length)` |
-| 动态 | 运行时 | `static_monotonic_buffer_resource(void_pointer buffer, size_type length, upstream_resource_pointer)` 或 `static_monotonic_buffer_resource(void_pointer buffer, size_type length, Upstream&)` |
+| 静态 | 静态 | `monotonic_buffer_resource()` |
+| 静态 | 运行时 | `explicit monotonic_buffer_resource(upstream_resource_pointer)` 或 `explicit monotonic_buffer_resource(Upstream&)` |
+| 动态 | 静态 | `monotonic_buffer_resource(void_pointer buffer, size_type length)` |
+| 动态 | 运行时 | `monotonic_buffer_resource(void_pointer buffer, size_type length, upstream_resource_pointer)` 或 `monotonic_buffer_resource(void_pointer buffer, size_type length, Upstream&)` |
 
 其中 `upstream_resource_pointer` 是 `memory_resource_traits<Upstream>::memory_resource_pointer`。
 
@@ -207,7 +207,7 @@ using upstream_resource_pointer =
 ### operator==
 
 ```C++
-bool operator==(const static_monotonic_buffer_resource& other) const noexcept;
+bool operator==(const monotonic_buffer_resource& other) const noexcept;
 ```
 
 比较对象身份。两个不同的单调资源即使使用相同的静态缓冲区或相同的上游，也不相等。复制得到的对象不存在，因为资源不可复制。
@@ -241,12 +241,12 @@ using void_pointer =
 
 ```C++
 #include <cstddef>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 alignas(64) inline std::byte buffer[1024];
 inline constexpr void* buffer_address = buffer;
 
-using resource_type = Yc::static_monotonic_buffer_resource<
+using resource_type = Yc::mmr::monotonic_buffer_resource<
     buffer_address, sizeof(buffer)>;
 
 resource_type resource;
@@ -260,7 +260,7 @@ void* p = resource.allocate(64, 64);
 ```C++
 std::byte buffer[1024]{};
 
-Yc::static_monotonic_buffer_resource<> resource{
+Yc::mmr::monotonic_buffer_resource<> resource{
     buffer, sizeof(buffer)};
 
 void* p = resource.allocate(64, 64);
@@ -269,7 +269,7 @@ void* p = resource.allocate(64, 64);
 传入 `nullptr, 0` 表示没有初始缓冲区：
 
 ```C++
-Yc::static_monotonic_buffer_resource<> resource{nullptr, 0};
+Yc::mmr::monotonic_buffer_resource<> resource{nullptr, 0};
 ```
 
 ### 有状态上游
@@ -279,7 +279,7 @@ Yc::static_monotonic_buffer_resource<> resource{nullptr, 0};
 ```C++
 inline MyUpstream upstream;
 
-using resource_type = Yc::static_monotonic_buffer_resource<
+using resource_type = Yc::mmr::monotonic_buffer_resource<
     buffer_address, 16, MyUpstream, &upstream>;
 
 resource_type resource; // 上游是“静态”的，不需要构造参数
@@ -290,7 +290,7 @@ resource_type resource; // 上游是“静态”的，不需要构造参数
 ```C++
 MyUpstream upstream;
 
-using resource_type = Yc::static_monotonic_buffer_resource<
+using resource_type = Yc::mmr::monotonic_buffer_resource<
     buffer_address, 16, MyUpstream>;
 
 resource_type resource{upstream};
@@ -299,7 +299,7 @@ resource_type resource{upstream};
 动态缓冲区加运行时上游：
 
 ```C++
-using resource_type = Yc::static_monotonic_buffer_resource<
+using resource_type = Yc::mmr::monotonic_buffer_resource<
     nullptr, 0, MyUpstream>;
 
 resource_type resource{buffer, sizeof(buffer), upstream};
@@ -309,11 +309,11 @@ resource_type resource{buffer, sizeof(buffer), upstream};
 
 ```C++
 #include <cstddef>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 alignas(64) std::byte buffer[256]{};
 
-Yc::static_monotonic_buffer_resource<> resource{
+Yc::mmr::monotonic_buffer_resource<> resource{
     buffer, sizeof(buffer)};
 
 void* first = resource.allocate(32, 8);
@@ -329,7 +329,7 @@ void* second = resource.allocate(32, 8); // 再次从 buffer 开头分配
 
 ```C++
 using allocator_type =
-    Yc::static_allocator<int, resource_type>;
+    Yc::mmr::allocator<int, resource_type>;
 
 allocator_type alloc{resource};
 int* p = alloc.allocate(8);
@@ -343,13 +343,13 @@ alloc.deallocate(p, 8);
 ```C++
 #include <cstddef>
 #include <new>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 alignas(64) inline std::byte buffer[64];
 inline constexpr void* buffer_address = buffer;
 
-using resource_type = Yc::static_monotonic_buffer_resource<
-    buffer_address, 64, Yc::static_null_memory_resource>;
+using resource_type = Yc::mmr::monotonic_buffer_resource<
+    buffer_address, 64, Yc::mmr::null_memory_resource>;
 
 resource_type resource;
 void* p = resource.allocate(32); // 来自初始缓冲区，成功
@@ -360,7 +360,7 @@ try
 }
 catch (const std::bad_alloc&)
 {
-    // static_null_memory_resource 的分配总是失败
+    // null_memory_resource 的分配总是失败
 }
 ```
 

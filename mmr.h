@@ -9,7 +9,7 @@
 #include <new>
 #include <type_traits>
 
-namespace Yc
+namespace Yc::mmr
 {
     namespace details
     {
@@ -72,7 +72,7 @@ namespace Yc
     };
 
     template<class T>
-    concept static_memory_resource =
+    concept memory_resource =
         std::equality_comparable<T> &&
         requires(
             T t,
@@ -84,24 +84,24 @@ namespace Yc
             t.deallocate(p, (std::size_t)0, (std::size_t)8);
         };
 
-    static_assert(static_memory_resource<std::pmr::memory_resource>);
+    static_assert(memory_resource<std::pmr::memory_resource>);
 
     template<class T>
-    struct is_static_memory_resource : std::bool_constant<static_memory_resource<T>>
+    struct is_memory_resource : std::bool_constant<memory_resource<T>>
     {
     };
 
     template<class T>
-    inline constexpr bool is_static_memory_resource_v = is_static_memory_resource<T>::value;
+    inline constexpr bool is_memory_resource_v = is_memory_resource<T>::value;
 
     namespace details
     {
         template<class Res>
-        using static_allocator_pointer_t = memory_resource_pointer_parameter_t<
+        using allocator_pointer_t = memory_resource_pointer_parameter_t<
             typename memory_resource_traits<Res>::memory_resource_pointer>;
 
         template<class Res, auto Ptr>
-        struct static_allocator_config
+        struct allocator_config
         {
             using resource_type = Res;
             static constexpr auto pointer_value = Ptr;
@@ -196,7 +196,7 @@ namespace Yc
         };
 
         template<class Config>
-        using static_allocator_storage_t = allocator_storage<
+        using allocator_storage_t = allocator_storage<
             typename Config::resource_type,
             typename memory_resource_traits<
                 typename Config::resource_type>::memory_resource_pointer,
@@ -209,9 +209,9 @@ namespace Yc
     namespace details
     {
         template<class T, class Config>
-            requires static_memory_resource<typename Config::resource_type>
-        class static_allocator_impl
-            : private static_allocator_storage_t<Config>
+            requires memory_resource<typename Config::resource_type>
+        class allocator_impl
+            : private allocator_storage_t<Config>
         {
             using resource_type = typename Config::resource_type;
             static constexpr auto Ptr = Config::pointer_value;
@@ -222,7 +222,7 @@ namespace Yc
             static constexpr bool is_empty_resource =
                 is_nonnull_pointer<decltype(Ptr), Ptr>() ||
                 memory_resource_traits<resource_type>::is_always_equal::value;
-            using storage_type = static_allocator_storage_t<Config>;
+            using storage_type = allocator_storage_t<Config>;
 
         public:
             using value_type = T;
@@ -235,35 +235,35 @@ namespace Yc
             using difference_type = std::ptrdiff_t;
             using propagate_on_container_move_assignment = std::true_type;
 
-            constexpr static_allocator_impl() noexcept
+            constexpr allocator_impl() noexcept
                 requires is_empty_resource
                 = default;
 
-            static_allocator_impl(const static_allocator_impl&) = default;
-            static_allocator_impl& operator=(const static_allocator_impl&) = default;
+            allocator_impl(const allocator_impl&) = default;
+            allocator_impl& operator=(const allocator_impl&) = default;
 
-            constexpr explicit static_allocator_impl(resource_pointer p) noexcept
+            constexpr explicit allocator_impl(resource_pointer p) noexcept
                 requires (!is_empty_resource)
                 : storage_type(p)
             {
             }
 
-            constexpr explicit static_allocator_impl(resource_type& resource) noexcept
+            constexpr explicit allocator_impl(resource_type& resource) noexcept
                 requires (!is_empty_resource)
                 : storage_type(std::pointer_traits<resource_pointer>::pointer_to(resource))
             {
             }
 
             template<class U>
-            constexpr static_allocator_impl(const static_allocator_impl<U, Config>&) noexcept
+            constexpr allocator_impl(const allocator_impl<U, Config>&) noexcept
                 requires is_empty_resource
                 : storage_type()
             {
             }
 
             template<class U>
-            constexpr static_allocator_impl(
-                const static_allocator_impl<U, Config>& other) noexcept
+            constexpr allocator_impl(
+                const allocator_impl<U, Config>& other) noexcept
                 requires (!is_empty_resource)
                 : storage_type(other.get_resource_pointer())
             {
@@ -300,8 +300,8 @@ namespace Yc
             }
 
             friend bool operator==(
-                const static_allocator_impl& lhs,
-                const static_allocator_impl& rhs)
+                const allocator_impl& lhs,
+                const allocator_impl& rhs)
             {
                 if constexpr (is_empty_resource)
                 {
@@ -352,12 +352,12 @@ namespace Yc
         };
     }
 
-    template<class T, static_memory_resource Res,
-        details::static_allocator_pointer_t<Res> Ptr = nullptr>
-    using static_allocator = details::static_allocator_impl<
-        T, details::static_allocator_config<Res, Ptr>>;
+    template<class T, memory_resource Res,
+        details::allocator_pointer_t<Res> Ptr = nullptr>
+    using allocator = details::allocator_impl<
+        T, details::allocator_config<Res, Ptr>>;
 
-    struct static_new_delete_resource
+    struct new_delete_resource
     {
         using void_pointer = void*;
 
@@ -390,10 +390,10 @@ namespace Yc
             }
         }
 
-        bool operator==(const static_new_delete_resource&) const noexcept = default;
+        bool operator==(const new_delete_resource&) const noexcept = default;
     };
 
-    struct static_null_memory_resource
+    struct null_memory_resource
     {
         using void_pointer = void*;
 
@@ -411,18 +411,18 @@ namespace Yc
         {
         }
 
-        bool operator==(const static_null_memory_resource&) const noexcept = default;
+        bool operator==(const null_memory_resource&) const noexcept = default;
     };
 
-    static_assert(static_memory_resource<static_new_delete_resource>);
-    static_assert(static_memory_resource<static_null_memory_resource>);
-    static_assert(std::is_empty_v<static_new_delete_resource>);
-    static_assert(std::is_empty_v<static_null_memory_resource>);
+    static_assert(memory_resource<new_delete_resource>);
+    static_assert(memory_resource<null_memory_resource>);
+    static_assert(std::is_empty_v<new_delete_resource>);
+    static_assert(std::is_empty_v<null_memory_resource>);
 
     template<auto Buffer = nullptr, std::size_t Length = 0,
-        static_memory_resource Upstream = static_new_delete_resource,
-        details::static_allocator_pointer_t<Upstream> UpstreamPtr = nullptr>
-    class static_monotonic_buffer_resource
+        memory_resource Upstream = new_delete_resource,
+        details::allocator_pointer_t<Upstream> UpstreamPtr = nullptr>
+    class monotonic_buffer_resource
         : private details::allocator_storage<
             Upstream, typename memory_resource_traits<Upstream>::memory_resource_pointer,
             UpstreamPtr,
@@ -437,13 +437,13 @@ namespace Yc
 
         static constexpr bool has_static_buffer =
             details::is_nonnull_pointer<decltype(Buffer), Buffer>();
-        static constexpr bool static_upstream =
+        static constexpr bool compile_time_upstream =
             details::is_nonnull_pointer<decltype(UpstreamPtr), UpstreamPtr>() ||
             memory_resource_traits<Upstream>::is_always_equal::value;
         static constexpr std::size_t default_alignment = alignof(std::max_align_t);
 
         using upstream_storage = details::allocator_storage<
-            Upstream, upstream_pointer, UpstreamPtr, static_upstream>;
+            Upstream, upstream_pointer, UpstreamPtr, compile_time_upstream>;
 
         struct block;
 
@@ -474,61 +474,61 @@ namespace Yc
             has_static_buffer || Length == 0,
             "a null static buffer address requires Length == 0");
 
-        static_monotonic_buffer_resource()
-            requires (has_static_buffer && static_upstream)
+        monotonic_buffer_resource()
+            requires (has_static_buffer && compile_time_upstream)
         {
             set_static_buffer();
         }
 
-        explicit static_monotonic_buffer_resource(upstream_pointer upstream_resource)
-            requires (has_static_buffer && !static_upstream)
+        explicit monotonic_buffer_resource(upstream_pointer upstream_resource)
+            requires (has_static_buffer && !compile_time_upstream)
             : upstream_storage(upstream_resource)
         {
             set_static_buffer();
         }
 
-        explicit static_monotonic_buffer_resource(Upstream& upstream_resource)
-            requires (has_static_buffer && !static_upstream)
+        explicit monotonic_buffer_resource(Upstream& upstream_resource)
+            requires (has_static_buffer && !compile_time_upstream)
             : upstream_storage(make_upstream_pointer(upstream_resource))
         {
             set_static_buffer();
         }
 
-        static_monotonic_buffer_resource(void_pointer initial_buffer, size_type length)
-            requires (!has_static_buffer && static_upstream)
+        monotonic_buffer_resource(void_pointer initial_buffer, size_type length)
+            requires (!has_static_buffer && compile_time_upstream)
         {
             set_buffer(initial_buffer, length);
         }
 
-        static_monotonic_buffer_resource(
+        monotonic_buffer_resource(
             void_pointer initial_buffer,
             size_type length,
             upstream_pointer upstream_resource)
-            requires (!has_static_buffer && !static_upstream)
+            requires (!has_static_buffer && !compile_time_upstream)
             : upstream_storage(upstream_resource)
         {
             set_buffer(initial_buffer, length);
         }
 
-        static_monotonic_buffer_resource(
+        monotonic_buffer_resource(
             void_pointer initial_buffer,
             size_type length,
             Upstream& upstream_resource)
-            requires (!has_static_buffer && !static_upstream)
+            requires (!has_static_buffer && !compile_time_upstream)
             : upstream_storage(make_upstream_pointer(upstream_resource))
         {
             set_buffer(initial_buffer, length);
         }
 
-        ~static_monotonic_buffer_resource()
+        ~monotonic_buffer_resource()
         {
             release_blocks();
         }
 
-        static_monotonic_buffer_resource(const static_monotonic_buffer_resource&) = delete;
-        static_monotonic_buffer_resource& operator=(const static_monotonic_buffer_resource&) = delete;
-        static_monotonic_buffer_resource(static_monotonic_buffer_resource&&) = delete;
-        static_monotonic_buffer_resource& operator=(static_monotonic_buffer_resource&&) = delete;
+        monotonic_buffer_resource(const monotonic_buffer_resource&) = delete;
+        monotonic_buffer_resource& operator=(const monotonic_buffer_resource&) = delete;
+        monotonic_buffer_resource(monotonic_buffer_resource&&) = delete;
+        monotonic_buffer_resource& operator=(monotonic_buffer_resource&&) = delete;
 
         [[nodiscard]] void_pointer allocate(
             size_type bytes,
@@ -569,7 +569,7 @@ namespace Yc
 
         [[nodiscard]] upstream_resource_pointer upstream_resource() const noexcept
         {
-            if constexpr (static_upstream)
+            if constexpr (compile_time_upstream)
             {
                 if constexpr (details::is_nonnull_pointer<decltype(UpstreamPtr), UpstreamPtr>())
                 {
@@ -586,7 +586,7 @@ namespace Yc
             }
         }
 
-        bool operator==(const static_monotonic_buffer_resource& other) const noexcept
+        bool operator==(const monotonic_buffer_resource& other) const noexcept
         {
             return this == &other;
         }
@@ -768,10 +768,10 @@ namespace Yc
     };
 
     template<
-        static_memory_resource Upstream = static_new_delete_resource,
-        details::static_allocator_pointer_t<Upstream> UpstreamPtr = nullptr,
-        std::size_t ChunkSize = 4096>
-    class static_lifo_pool_resource
+        std::size_t ChunkSize = 4096,
+        memory_resource Upstream = new_delete_resource,
+        details::allocator_pointer_t<Upstream> UpstreamPtr = nullptr>
+    class lifo_pool_resource
         : private details::allocator_storage<
             Upstream, typename memory_resource_traits<Upstream>::memory_resource_pointer,
             UpstreamPtr,
@@ -782,11 +782,11 @@ namespace Yc
             typename memory_resource_traits<Upstream>::memory_resource_pointer;
         using resource_void_pointer =
             typename memory_resource_traits<Upstream>::void_pointer;
-        static constexpr bool static_upstream =
+        static constexpr bool compile_time_upstream =
             details::is_nonnull_pointer<decltype(UpstreamPtr), UpstreamPtr>() ||
             memory_resource_traits<Upstream>::is_always_equal::value;
         using upstream_storage = details::allocator_storage<
-            Upstream, upstream_pointer, UpstreamPtr, static_upstream>;
+            Upstream, upstream_pointer, UpstreamPtr, compile_time_upstream>;
 
         struct chunk_header;
         using chunk_pointer =
@@ -852,32 +852,32 @@ namespace Yc
         static constexpr size_type chunk_alignment = ChunkSize;
         static constexpr size_type default_alignment = alignof(std::max_align_t);
 
-        constexpr static_lifo_pool_resource() noexcept
-            requires static_upstream
+        constexpr lifo_pool_resource() noexcept
+            requires compile_time_upstream
         = default;
 
-        explicit static_lifo_pool_resource(upstream_pointer upstream_resource)
-            requires (!static_upstream)
+        explicit lifo_pool_resource(upstream_pointer upstream_resource)
+            requires (!compile_time_upstream)
             : upstream_storage(upstream_resource)
         {
         }
 
-        explicit static_lifo_pool_resource(Upstream& upstream_resource)
-            requires (!static_upstream)
+        explicit lifo_pool_resource(Upstream& upstream_resource)
+            requires (!compile_time_upstream)
             : upstream_storage(make_upstream_pointer(upstream_resource))
         {
         }
 
-        ~static_lifo_pool_resource()
+        ~lifo_pool_resource()
         {
             release_direct_blocks();
             release_chunks();
         }
 
-        static_lifo_pool_resource(const static_lifo_pool_resource&) = delete;
-        static_lifo_pool_resource& operator=(const static_lifo_pool_resource&) = delete;
-        static_lifo_pool_resource(static_lifo_pool_resource&&) = delete;
-        static_lifo_pool_resource& operator=(static_lifo_pool_resource&&) = delete;
+        lifo_pool_resource(const lifo_pool_resource&) = delete;
+        lifo_pool_resource& operator=(const lifo_pool_resource&) = delete;
+        lifo_pool_resource(lifo_pool_resource&&) = delete;
+        lifo_pool_resource& operator=(lifo_pool_resource&&) = delete;
 
         [[nodiscard]] void_pointer allocate(
             size_type bytes,
@@ -949,7 +949,7 @@ namespace Yc
 
         [[nodiscard]] upstream_resource_pointer upstream_resource() const noexcept
         {
-            if constexpr (static_upstream)
+            if constexpr (compile_time_upstream)
             {
                 if constexpr (details::is_nonnull_pointer<decltype(UpstreamPtr), UpstreamPtr>())
                 {
@@ -966,7 +966,7 @@ namespace Yc
             }
         }
 
-        bool operator==(const static_lifo_pool_resource& other) const noexcept
+        bool operator==(const lifo_pool_resource& other) const noexcept
         {
             return this == &other;
         }
@@ -1354,6 +1354,8 @@ namespace Yc
             auto* fields = reinterpret_cast<direct_header_fields*>(
                 user - direct_header_size);
 
+            ::new (static_cast<void*>(fields)) direct_header_fields{};
+
             fields->base = base;
             fields->total = total;
             fields->alignment = effective_alignment;
@@ -1421,6 +1423,6 @@ namespace Yc
         }
     };
 
-    static_assert(static_memory_resource<static_monotonic_buffer_resource<>>);
-    static_assert(static_memory_resource<static_lifo_pool_resource<>>);
+    static_assert(memory_resource<monotonic_buffer_resource<>>);
+    static_assert(memory_resource<lifo_pool_resource<>>);
 }

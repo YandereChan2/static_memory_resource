@@ -1,18 +1,18 @@
-# Yc::static_new_delete_resource 与 Yc::static_null_memory_resource
+# Yc::mmr::new_delete_resource 与 Yc::mmr::null_memory_resource
 
-在文件 `"static_memory_resource.h"` 定义
+在文件 `"mmr.h"` 定义
 
 ```C++
-struct static_new_delete_resource;
-struct static_null_memory_resource;
+struct new_delete_resource;
+struct null_memory_resource;
 ```
 
-这两个资源都是无状态的空类，可以直接默认构造，所有同类型实例相等，并且 `memory_resource_traits<T>::is_always_equal::value` 为 `true`。它们可以作为 [`static_allocator`](static_allocator.md) 的资源，也可以作为 [`static_monotonic_buffer_resource`](static_monotonic_buffer_resource.md) 的上游资源。
+这两个资源都是无状态的空类，可以直接默认构造，所有同类型实例相等，并且 `memory_resource_traits<T>::is_always_equal::value` 为 `true`。它们可以作为 [`allocator`](allocator.md) 的资源，也可以作为 [`monotonic_buffer_resource`](monotonic_buffer_resource.md) 的上游资源。
 
-## static_new_delete_resource
+## new_delete_resource
 
 ```C++
-struct static_new_delete_resource
+struct new_delete_resource
 {
     using void_pointer = void*;
 
@@ -28,11 +28,11 @@ struct static_new_delete_resource
         std::size_t bytes,
         std::size_t alignment = default_alignment) noexcept;
 
-    bool operator==(const static_new_delete_resource&) const noexcept = default;
+    bool operator==(const new_delete_resource&) const noexcept = default;
 };
 ```
 
-`Yc::static_new_delete_resource` 把资源接口转发到全局 `operator new` / `operator delete`。
+`Yc::mmr::new_delete_resource` 把资源接口转发到全局 `operator new` / `operator delete`。
 
 ### 分配行为
 
@@ -52,10 +52,10 @@ struct static_new_delete_resource
 
 ```C++
 #include <type_traits>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
 using allocator_type =
-    Yc::static_allocator<int, Yc::static_new_delete_resource>;
+    Yc::mmr::allocator<int, Yc::mmr::new_delete_resource>;
 
 static_assert(std::is_empty_v<allocator_type>);
 
@@ -64,10 +64,10 @@ int* p = alloc.allocate(8);
 alloc.deallocate(p, 8);
 ```
 
-## static_null_memory_resource
+## null_memory_resource
 
 ```C++
-struct static_null_memory_resource
+struct null_memory_resource
 {
     using void_pointer = void*;
 
@@ -80,11 +80,11 @@ struct static_null_memory_resource
         std::size_t bytes,
         std::size_t alignment = alignof(std::max_align_t)) noexcept;
 
-    bool operator==(const static_null_memory_resource&) const noexcept = default;
+    bool operator==(const null_memory_resource&) const noexcept = default;
 };
 ```
 
-`Yc::static_null_memory_resource` 是一个“永远无法分配”的资源：
+`Yc::mmr::null_memory_resource` 是一个“永远无法分配”的资源：
 
 - `allocate` 不论参数为何，都抛出 `std::bad_alloc`。
 - `deallocate` 什么也不做，并且是 `noexcept`。
@@ -100,9 +100,9 @@ struct static_null_memory_resource
 ```C++
 #include <cassert>
 #include <new>
-#include "static_memory_resource.h"
+#include "mmr.h"
 
-Yc::static_null_memory_resource resource;
+Yc::mmr::null_memory_resource resource;
 
 bool threw = false;
 try
@@ -120,7 +120,7 @@ resource.deallocate(nullptr, 0);
 
 ## 共同性质
 
-| 性质 | `static_new_delete_resource` | `static_null_memory_resource` |
+| 性质 | `new_delete_resource` | `null_memory_resource` |
 |:-|:-|:-|
 | 是否有状态 | 否 | 否 |
 | 是否为空类 | 是 | 是 |
@@ -133,7 +133,7 @@ resource.deallocate(nullptr, 0);
 
 ## 注解
 
-- 这两个资源自身不保存任何状态，因此使用它们的 `static_allocator` 是空类。
-- `static_new_delete_resource` 的 `deallocate` 只使用调用者传入的对齐参数；大小参数被忽略。
-- `static_null_memory_resource` 的 `deallocate` 可以接受任意指针和大小，但不会解引用这些参数。
-- 两者都可以作为 `static_monotonic_buffer_resource` 的上游；使用空资源时，初始缓冲区耗尽后分配会抛出 `std::bad_alloc`。
+- 这两个资源自身不保存任何状态，因此使用它们的 `allocator` 是空类。
+- `new_delete_resource` 的 `deallocate` 只使用调用者传入的对齐参数；大小参数被忽略。
+- `null_memory_resource` 的 `deallocate` 可以接受任意指针和大小，但不会解引用这些参数。
+- 两者都可以作为 `monotonic_buffer_resource` 的上游；使用空资源时，初始缓冲区耗尽后分配会抛出 `std::bad_alloc`。
