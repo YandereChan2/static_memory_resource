@@ -29,15 +29,22 @@ template<
     static_memory_resource Upstream = static_new_delete_resource,
     /* memory-resource-pointer */ UpstreamPtr = nullptr>
 class static_monotonic_buffer_resource;
+
+template<
+    static_memory_resource Upstream = static_new_delete_resource,
+    /* memory-resource-pointer */ UpstreamPtr = nullptr,
+    std::size_t ChunkSize = 4096>
+class static_lifo_pool_resource;
 ```
 
-这组设施描述内存资源，并在此之上提供标准分配器和单调缓冲区资源。中心的约束是 `Yc::static_memory_resource`：一个类型只要能被平等比较，并同时提供带对齐和不带对齐的分配、释放接口，就满足该约束。
+这组设施描述内存资源，并在此之上提供标准分配器和两种分配策略。中心的约束是 `Yc::static_memory_resource`：一个类型只要能被平等比较，并同时提供带对齐和不带对齐的分配、释放接口，就满足该约束。
 
 整套设施围绕“能在编译期确定资源位置时，就不在运行时保存指针”这一原则设计：
 
 - 资源的 `is_always_equal::value` 为真（默认对应无状态/空类资源），或指向资源的指针可以在模板实参中给出时，`static_allocator` 是空类，并且可以直接默认构造。
 - 资源无法静态确定时，`static_allocator` 保存一个资源指针，并通过构造函数传入该指针。
 - `static_monotonic_buffer_resource` 先使用一块初始缓冲区；缓冲区耗尽后向上游资源申请新块，并在自身析构时归还这些块。也可以调用 `release()` 提前归还所有上游块，并把分配位置重置到初始缓冲区开头。
+- `static_lifo_pool_resource` 用可配置大小的 chunk 组成最新块优先的池；分配优先使用最新 chunk 的剩余空间，释放时优先回收最新 chunk 的尾部，最新 chunk 完全空出后归还上游。
 
 所有设施均位于命名空间 `Yc` 中，不向 `std` 添加任何声明。
 
@@ -52,6 +59,7 @@ class static_monotonic_buffer_resource;
 | [`static_new_delete_resource`](builtin_resources.md#static_new_delete_resource) | 使用全局 `operator new` / `operator delete` 的无状态资源 |
 | [`static_null_memory_resource`](builtin_resources.md#static_null_memory_resource) | 分配必定失败的无状态资源 |
 | [`static_monotonic_buffer_resource`](static_monotonic_buffer_resource.md) | 带初始缓冲区和上游回退的单调资源 |
+| [`static_lifo_pool_resource`](static_lifo_pool_resource.md) | 面向近似 LIFO 模式的可配置 chunk 池，默认 chunk 为 4096 字节 |
 
 ## memory_resource_traits
 
@@ -132,7 +140,7 @@ inline constexpr bool is_static_memory_resource_v =
 
 ## 占位模板参数
 
-`static_allocator` 的第三个模板参数和 `static_monotonic_buffer_resource` 的第四个模板参数在本文档中写作：
+`static_allocator` 的第三个模板参数、`static_monotonic_buffer_resource` 的第四个模板参数，以及 `static_lifo_pool_resource` 的第二个模板参数，在本文档中写作：
 
 ```C++
 /* memory-resource-pointer */
@@ -140,9 +148,9 @@ inline constexpr bool is_static_memory_resource_v =
 
 它表示“可选的、指向资源对象的编译期指针”。具体含义如下（这些 `/* ... */` 只是文档占位，不是实际代码）：
 
-- 这两个位置都是非类型模板参数；实参是资源地址，而不是类型。
+- 这几个位置都是非类型模板参数；实参是资源地址，而不是类型。
 - 对于 `static_allocator<T, Res, Ptr>`，它指向 `Res` 的实例。
-- 对于 `static_monotonic_buffer_resource<... UpstreamPtr>`，它指向 `Upstream` 的实例。
+- 对于 `static_monotonic_buffer_resource<... UpstreamPtr>` 和 `static_lifo_pool_resource<... UpstreamPtr>`，它指向 `Upstream` 的实例。
 - 它的实际类型是 `memory_resource_traits<Res>::memory_resource_pointer`（或 `memory_resource_traits<Upstream>::memory_resource_pointer`）。
 - 如果该类型不能作为非类型模板参数，或者不能由 `nullptr` 隐式初始化，那么该位置会退化为一个只能表示空值的占位类型。
 - 默认值为 `nullptr`。非空表示资源的地址在编译期已经确定，此时使用该资源的设施不需要保存运行时指针；为空时，是否还需要运行时指针由资源的 `is_always_equal` 和具体构造函数决定。
@@ -176,6 +184,7 @@ using allocator_pointer =
 | [`static_new_delete_resource`](builtin_resources.md#static_new_delete_resource) | 始终为空类 |
 | [`static_null_memory_resource`](builtin_resources.md#static_null_memory_resource) | 始终为空类 |
 | [`static_monotonic_buffer_resource`](static_monotonic_buffer_resource.md) | 不适用；它必须保存分配状态 |
+| [`static_lifo_pool_resource`](static_lifo_pool_resource.md) | 不适用；它保存分配状态 |
 
 `static_allocator` 为空类时可以直接默认构造，且所有同类型实例相等；非空时不能默认构造，必须传入资源指针或资源引用。
 
@@ -237,6 +246,21 @@ void* p = resource.allocate(64, 64);
 
 `buffer_address` 之所以声明为 `void*`，是因为静态缓冲区地址的类型必须与上游资源的 `void_pointer` 精确一致；默认上游是 `static_new_delete_resource`，其 `void_pointer` 为 `void*`。
 
+近似 LIFO 池的基本用法：
+
+```C++
+#include "static_memory_resource.h"
+
+Yc::static_lifo_pool_resource<> pool;
+void* a = pool.allocate(64);
+void* b = pool.allocate(32);
+
+pool.deallocate(b, 32);
+pool.deallocate(a, 64);
+```
+
+池按 4096 字节 chunk 向上游申请内存；最新 chunk 完全空出后会归还上游。
+
 ## 细节与约束
 
 - 该设施是 header-only 的，包含 `"static_memory_resource.h"` 即可使用。
@@ -244,6 +268,8 @@ void* p = resource.allocate(64, 64);
 - `static_allocator` 遵守标准分配器的基本要求，可与 `std::allocator_traits` 和标准容器配合。
 - `static_allocator` 的 `operator==` 比较的是**保存的资源指针指向的资源对象**，不是指针地址；空类分配器恒等。
 - `static_monotonic_buffer_resource` 的 `operator==` 比较对象身份；它是不可复制、不可移动的。
+- `static_lifo_pool_resource` 的 `operator==` 比较对象身份；它是不可复制、不可移动的。
+- `static_lifo_pool_resource` 不会立即复用非顶端释放的内存；它优先回收最新 chunk 的尾部空间。
 - 这些设施不提供线程同步；多个线程同时使用同一个资源需要外部同步。
 - 资源分配出的对象生命周期由调用者管理；分配器只负责原始内存。
 - 资源接口中的大小以字节为单位；`static_allocator::allocate(n)` 的 `n` 是元素个数，字节数按 `n * sizeof(T)` 计算。
@@ -256,3 +282,4 @@ void* p = resource.allocate(64, 64);
 | [`static_allocator`](static_allocator.md) | 标准分配器适配、空类条件、比较语义和 fancy pointer |
 | [内置资源](builtin_resources.md) | `static_new_delete_resource` 与 `static_null_memory_resource` |
 | [`static_monotonic_buffer_resource`](static_monotonic_buffer_resource.md) | 静态/动态初始缓冲区、上游资源和析构释放 |
+| [`static_lifo_pool_resource`](static_lifo_pool_resource.md) | 可配置 chunk 大小、最新块优先、尾部回收和直接大块 |

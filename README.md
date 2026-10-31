@@ -7,8 +7,9 @@ C++23 header-only 设施，提供：
 - 标准分配器 `Yc::static_allocator`
 - 无状态资源 `Yc::static_new_delete_resource` 与 `Yc::static_null_memory_resource`
 - 单调缓冲区资源 `Yc::static_monotonic_buffer_resource`
+- 面向近似 LIFO 模式的可配置 chunk 池 `Yc::static_lifo_pool_resource`
 
-资源位置在编译期已知或资源无状态时，`static_allocator` 是空类；无法静态确定时，分配器保存资源指针。单调资源先使用初始缓冲区，耗尽后向上游资源申请新块，并在析构时统一归还。
+资源位置在编译期已知或资源无状态时，`static_allocator` 是空类；无法静态确定时，分配器保存资源指针。单调资源先使用初始缓冲区，耗尽后向上游资源申请新块，并在析构时统一归还。池资源优先使用最新 chunk 的剩余空间，释放时优先回收最新 chunk 的尾部；最新 chunk 完全空出后归还上游。
 
 ## 文件
 
@@ -18,6 +19,7 @@ C++23 header-only 设施，提供：
   - [`static_allocator`](doc/static_memory_resource_readme/static_allocator.md)
   - [内置资源](doc/static_memory_resource_readme/builtin_resources.md)
   - [`static_monotonic_buffer_resource`](doc/static_memory_resource_readme/static_monotonic_buffer_resource.md)
+  - [`static_lifo_pool_resource`](doc/static_memory_resource_readme/static_lifo_pool_resource.md)
 
 ## 快速开始
 
