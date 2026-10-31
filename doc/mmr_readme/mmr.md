@@ -82,7 +82,7 @@ struct memory_resource_traits;
 
 `memory_resource_traits` 不提供 `pointer` 成员。`T` 是资源类型，没有 `value_type`，因此“元素指针”只在具体使用资源的设施中定义，例如 [`allocator`](allocator.md)。
 
-允许为自定义资源特化 `memory_resource_traits`，但应当同时提供上述三个成员类型。
+`memory_resource_traits` 不支持特化；对任何类型特化 `memory_resource_traits` 都会产生未定义行为。资源类型应通过自身的嵌套类型表达 `void_pointer` 和 `is_always_equal`。
 
 ## memory_resource
 
